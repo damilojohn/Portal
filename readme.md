@@ -1,1 +1,1 @@
-ECHO is on.
+## This repository contains the source code for Portal, a Rust based implementation of a neural-compression based Video Conferencing app. In fartial fulfillment of my Bachelor's of Science in Computer Engineering, undergraduate thesis.
