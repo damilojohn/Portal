@@ -1,0 +1,58 @@
+name: WebAssembly Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'videocall-client/**'
+      - 'videocall-codecs/**'
+      - 'videocall-types/**'
+      - 'protobuf/**'
+  pull_request:
+    paths:
+      - 'videocall-client/**'
+      - 'videocall-codecs/**'
+      - 'neteq/**'
+      - 'videocall-types/**'
+      - 'protobuf/**'
+
+jobs:
+  wasm-test:
+    name: WebAssembly Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          override: true
+          profile: minimal
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-wasm-
+
+      - name: Install libvpx
+        run: sudo apt-get update && sudo apt-get install -y libvpx-dev
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Run wasm-pack tests for videocall-client
+        run: cd videocall-client && wasm-pack test --node
+
+      - name: Run wasm-pack tests for videocall-codecs
+        run: cd videocall-codecs && cargo test
+      
+      - name: Run tests for neteq
+        run: cd neteq && cargo test --no-default-features --features web

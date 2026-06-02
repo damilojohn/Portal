@@ -1,0 +1,51 @@
+# Singapore NATS configuration with US East gateway
+nats:
+  nats:
+    natsbox:
+      enabled: true
+    cluster:
+      enabled: false
+      replicas: 2  # Smaller cluster for Singapore
+      noAdvertise: true
+    jetstream:
+      enabled: false
+      fileStore:
+        pvc:
+          size: 3Gi  # Smaller storage for Singapore
+          storageClassName: do-block-storage
+      memStore:
+        enabled: true
+        maxSize: 512Mi
+    auth:
+      enabled: false
+    resources:
+      limits:
+        cpu: 400m
+        memory: 600Mi
+      requests:
+        cpu: 400m
+        memory: 600Mi
+  # Gateway configuration using direct DigitalOcean format
+  gateway:
+    enabled: true
+    port: 7222
+    name: "singapore"
+    gateways:
+      - name: "us-east-1"
+        urls:
+          - "nats://10.100.0.2:30722"  # US East private IP + NodePort
+
+# Service configuration
+service:
+  name: nats-singapore
+  type: ClusterIP
+  ports:
+    client:
+      enabled: true
+      port: 4222
+    monitor:
+      enabled: true
+      port: 8222
+    gateway:
+      enabled: true
+      port: 7222

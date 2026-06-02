@@ -1,0 +1,97 @@
+# Singapore WebSocket server configuration
+rustlemania-websocket:
+  nameOverride: "websocket-singapore"
+  fullnameOverride: "websocket-singapore"
+
+  replicaCount: 1
+
+  image:
+    repository: securityunion/rustlemania-api
+    pullPolicy: Always
+    tag: latest
+
+  env:
+    - name: RUST_LOG
+      value: warn,async_nats=warn
+    - name: ACTIX_PORT
+      value: "8080"
+    - name: UI_ENDPOINT
+      value: https://singapore.webtransport.video
+    - name: NATS_URL
+      value: nats-singapore:4222  # Connect to Singapore NATS cluster
+    - name: DATABASE_ENABLED
+      value: "false"
+    - name: DATABASE_URL
+      value: abc
+    - name: REGION
+      value: "singapore"
+    - name: HOSTNAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: SERVER_ID
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: SERVICE_TYPE
+      value: websocket
+    - name: SERVER_STATS_INTERVAL_SECS
+      value: "5"
+    - name: TOKIO_WORKER_THREADS
+      value: "1"  # Optimal for 700m CPU (I/O bound WebSocket operations)
+
+  resources:
+    limits:
+      cpu: "700m"
+      memory: "1000Mi"
+    requests:
+      cpu: "700m"
+      memory: "1000Mi"
+
+  service:
+    type: ClusterIP  # Changed to ClusterIP for ingress
+    port: 8080
+
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      kubernetes.io/tls-acme: "true"
+    hosts:
+      - host: websocket-singapore.webtransport.video
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: websocket-singapore
+              port:
+                number: 8080
+    tls:
+      - secretName: websocket-singapore-tls
+        hosts:
+          - websocket-singapore.webtransport.video
+
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+  # Node selector for Singapore region
+  nodeSelector:
+    topology.kubernetes.io/region: "sgp1"
+
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - websocket-singapore
+          topologyKey: kubernetes.io/hostname 

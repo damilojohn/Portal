@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+message PacketWrapper {
+  enum PacketType {
+    PACKET_TYPE_UNKNOWN = 0;
+    RSA_PUB_KEY = 1;
+    AES_KEY = 2;
+    MEDIA = 3;
+    CONNECTION = 4;
+    DIAGNOSTICS = 5;
+    HEALTH = 6;
+    MEETING = 7;
+  }
+  PacketType packet_type = 1;
+  string email = 2;
+  bytes data = 3;
+}

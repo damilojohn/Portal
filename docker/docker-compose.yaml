@@ -1,0 +1,318 @@
+services:
+  yew-ui:
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+      - rustlemania-yew-ui-cargo-registry-cache:/usr/local/cargo/registry
+      - rustlemania-yew-ui-cargo-git-cache:/usr/local/cargo/git
+      - rustlemania-yew-ui-cargo-target-cache:/usr/local/cargo/target
+      - rustlemania-yew-ui-cache:/app/yew-ui/target
+    build:
+      dockerfile: ../docker/Dockerfile.yew
+      context: ../docker
+    working_dir: /app/yew-ui
+    command: ["/bin/sh", "-lc", "/app/docker/start-yew.sh"]
+    environment:
+      - ACTIX_UI_BACKEND_URL=${ACTIX_UI_BACKEND_URL:-ws://localhost:${ACTIX_PORT:-8080}}
+      - WEBTRANSPORT_HOST=${WEBTRANSPORT_HOST:-https://127.0.0.1:4433}
+      - TRUNK_SERVE_PORT=${TRUNK_SERVE_PORT:-80}
+      - ENABLE_OAUTH=${ENABLE_OAUTH:-false}
+      - API_BASE_URL=${API_BASE_URL:-http://localhost:8080}
+      - LOGIN_URL=http://localhost:${ACTIX_PORT:-8080}/login
+      - RUSTFLAGS=--cfg=web_sys_unstable_apis
+      - RUST_BACKTRACE=1
+      - WEBTRANSPORT_ENABLED=${WEBTRANSPORT_ENABLED:-false}
+      - E2EE_ENABLED=${E2EE_ENABLED:-false}
+      - FIREFOX_ENABLED=${FIREFOX_ENABLED:-false}
+      - USERS_ALLOWED_TO_STREAM=${USERS_ALLOWED_TO_STREAM:-}
+      - CARGO_TARGET_DIR=/app/yew-ui/target
+      - CARGO_INCREMENTAL=1
+      - CARGO_NET_OFFLINE=false
+      - UI_URL=${UI_URL:-http://localhost:${TRUNK_SERVE_PORT:-80}}
+    ports:
+      - "${TRUNK_SERVE_PORT:-80}:${TRUNK_SERVE_PORT:-80}"
+    depends_on:
+      - tailwind-yew
+
+  tailwind-yew:
+    build:
+      dockerfile: ../docker/Dockerfile.tailwind
+      context: ../docker
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+    working_dir: /app/yew-ui
+    entrypoint: ["/bin/sh", "-c"]
+    command: "tailwindcss -i ./static/leptos-style.css -o ./static/tailwind.css --watch --minify"
+    
+  website:
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+      - rustlemania-leptos-ui-cargo-registry-cache:/usr/local/cargo/registry
+      - rustlemania-leptos-ui-cargo-git-cache:/usr/local/cargo/git
+      - rustlemania-leptos-ui-cargo-target-cache:/usr/local/cargo/target
+      - rustlemania-leptos-ui-cache:/app/leptos-website/target
+    build:
+      dockerfile: ../docker/Dockerfile.website.dev
+      context: ../docker
+    working_dir: /app/leptos-website
+    command: bash -c "cargo leptos watch"
+    environment:
+      - LEPTOS_SITE_ADDR=0.0.0.0:4600
+      - CARGO_TARGET_DIR=/app/leptos-website/target
+      - CARGO_INCREMENTAL=1
+      - CARGO_NET_OFFLINE=false
+    ports:
+      - "4600:4600"
+  
+  websocket-api:
+    build:
+      dockerfile: ../docker/Dockerfile.actix
+      context: ../docker
+    working_dir: /app/actix-api
+    command: bash -c "/app/dbmate/startup.sh && cargo watch -x \"run -r --bin websocket_server \""
+    environment:
+      - ACTIX_PORT=${ACTIX_PORT:-8080}
+      - UI_ENDPOINT=${UI_ENDPOINT:-http://localhost:80}
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-}
+      - OAUTH_AUTH_URL=${OAUTH_AUTH_URL:-https://accounts.google.com/o/oauth2/v2/auth}
+      - OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-https://oauth2.googleapis.com/token}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET:-}
+      - OAUTH_REDIRECT_URL=${OAUTH_REDIRECT_URL:-http://localhost:8080/login/callback}
+      - DATABASE_ENABLED=${DATABASE_ENABLED:-true}
+      - RUST_LOG=debug,async_nats=info
+      - COOKIE_DOMAIN=${COOKIE_DOMAIN:-}
+      - DATABASE_URL=postgres://postgres:docker@postgres:5432/actix-api-db?sslmode=disable
+      - NATS_URL=nats:4222
+      - REGION=${REGION:-us-east}
+      - SERVER_ID=${SERVER_ID:-server-1}
+      - SERVICE_TYPE=websocket
+      - CARGO_TARGET_DIR=/app/actix-api/target
+      - CARGO_INCREMENTAL=1
+      - CARGO_NET_OFFLINE=false
+      - LOGIN_URL="" # needed for UI CI tests
+      - ACTIX_UI_BACKEND_URL="" # needed for UI CI tests
+      - WEBTRANSPORT_HOST="" # needed for UI CI tests
+      - FEATURE_MEETING_MANAGEMENT=${FEATURE_MEETING_MANAGEMENT:-false}
+    ports:
+      - "${ACTIX_PORT:-8080}:${ACTIX_PORT:-8080}"
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+      - rustlemania-actix-web-cargo-registry-cache:/usr/local/cargo/registry
+      - rustlemania-actix-web-cargo-git-cache:/usr/local/cargo/git
+      - rustlemania-actix-web-cargo-target-cache:/usr/local/cargo/target
+      - rustlemania-actix-web-target-cache:/app/actix-api/target
+    depends_on:
+      - postgres
+      - nats
+
+  metrics-api:
+    build:
+      dockerfile: ../docker/Dockerfile.actix
+      context: ../docker
+    working_dir: /app/actix-api
+    command: bash -c "cargo watch -x \"run -r --bin metrics_server \""
+    environment:
+      - METRICS_PORT=9091
+      - NATS_URL=nats:4222
+      - REGION=${REGION:-us-east}
+      - SERVER_ID=${SERVER_ID:-server-1}
+      - SERVICE_TYPE=client-metrics
+      - RUST_LOG=debug,async_nats=info
+      - DATABASE_URL=postgres://postgres:docker@postgres:5432/actix-api-db?sslmode=disable
+      - CARGO_TARGET_DIR=/app/actix-api/target
+      - CARGO_INCREMENTAL=1
+      - CARGO_NET_OFFLINE=false
+    ports:
+      - "9091:9091"
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+      - rustlemania-actix-web-cargo-registry-cache:/usr/local/cargo/registry
+      - rustlemania-actix-web-cargo-git-cache:/usr/local/cargo/git
+      - rustlemania-actix-web-cargo-target-cache:/usr/local/cargo/target
+      - rustlemania-actix-web-target-cache:/app/actix-api/target
+    depends_on:
+      - nats
+
+  server-stats-api:
+    build:
+      dockerfile: ../docker/Dockerfile.actix
+      context: ../docker
+    working_dir: /app/actix-api
+    command: bash -c "cargo watch -x \"run -r --bin metrics_server_snapshot \""
+    environment:
+      - METRICS_PORT=9092
+      - NATS_URL=nats:4222
+      - REGION=${REGION:-us-east}
+      - SERVER_ID=${SERVER_ID:-server-1}
+      - SERVICE_TYPE=server-stats
+      - RUST_LOG=debug,async_nats=info
+      - CARGO_TARGET_DIR=/app/actix-api/target
+      - CARGO_INCREMENTAL=1
+      - CARGO_NET_OFFLINE=false
+    ports:
+      - "9092:9092"
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+      - rustlemania-actix-web-cargo-registry-cache:/usr/local/cargo/registry
+      - rustlemania-actix-web-cargo-git-cache:/usr/local/cargo/git
+      - rustlemania-actix-web-cargo-target-cache:/usr/local/cargo/target
+      - rustlemania-actix-web-target-cache:/app/actix-api/target
+    depends_on:
+      - nats
+
+  webtransport-api:
+    build:
+      dockerfile: ../docker/Dockerfile.actix
+      context: ../docker
+    working_dir: /app/actix-api
+    command: bash -c "cargo watch -x \"run -r --bin webtransport_server \""
+    environment:
+      - RUST_LOG=info
+      - NATS_URL=nats:4222
+      - REGION=${REGION:-us-east}
+      - SERVER_ID=${SERVER_ID:-server-1}
+      - SERVICE_TYPE=webtransport
+      - LISTEN_URL=0.0.0.0:4433
+      - HEALTH_LISTEN_URL=0.0.0.0:5321
+      - CERT_PATH=certs/localhost.pem
+      - KEY_PATH=certs/localhost.key
+      - DATABASE_URL=postgres://postgres:docker@postgres:5432/actix-api-db?sslmode=disable
+      - CARGO_TARGET_DIR=/app/actix-api/target
+      - CARGO_INCREMENTAL=1
+      - CARGO_NET_OFFLINE=false
+      - FEATURE_MEETING_MANAGEMENT=${FEATURE_MEETING_MANAGEMENT:-false}
+    ports:
+      - "4433:4433/udp"
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+      - rustlemania-actix-webtransport-cargo-registry-cache:/usr/local/cargo/registry
+      - rustlemania-actix-webtransport-cargo-git-cache:/usr/local/cargo/git
+      - rustlemania-actix-webtransport-cargo-target-cache:/usr/local/cargo/target
+      - rustlemania-actix-webtransport-cache:/app/actix-api/target
+    depends_on:
+      - nats
+      - postgres
+
+  synthetic-clients:
+    build:
+      dockerfile: ../docker/Dockerfile.actix
+      context: ../docker
+    working_dir: /app/bot
+    command: bash -c "cargo run --release"
+    environment:
+      - RUST_LOG=debug  # Enable debug logging to see VP9 frame details
+      - BOT_CONFIG_PATH=/config/bot-config.yaml  # Use YAML config
+      - INSECURE=true  # Skip certificate verification for development
+      - CARGO_TARGET_DIR=/app/bot/target
+      - CARGO_INCREMENTAL=1
+      - CARGO_NET_OFFLINE=false
+    volumes:
+      - type: bind
+        source: ../
+        target: /app
+      # Mount the YAML config file
+      - type: bind
+        source: ./bot-config.yaml
+        target: /config/bot-config.yaml
+        read_only: true
+      - rustlemania-bot-cargo-registry-cache:/usr/local/cargo/registry
+      - rustlemania-bot-cargo-git-cache:/usr/local/cargo/git
+      - rustlemania-bot-cargo-target-cache:/usr/local/cargo/target
+      - rustlemania-bot-cache:/app/bot/target
+    depends_on:
+      - webtransport-api
+
+  nats:
+    image: nats
+    command: "--http_port 8222"
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  nats-box:
+    image: natsio/nats-box:latest
+    depends_on:
+      - nats
+    environment:
+      - NATS_URL=nats:4222
+    command: ["sleep", "infinity"]
+
+  postgres:
+    image: postgres:12
+    environment:
+      POSTGRES_PASSWORD: "docker"
+      PGPASSWORD: "docker"
+    ports:
+      - 5432
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: videocall-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    depends_on:
+      - metrics-api
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: videocall-grafana
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+  
+
+volumes:
+  rustlemania-actix-web-cargo-registry-cache:
+  rustlemania-actix-web-cargo-git-cache:
+  rustlemania-actix-web-cargo-target-cache:
+  rustlemania-actix-web-target-cache:
+  rustlemania-actix-webtransport-cargo-registry-cache:
+  rustlemania-actix-webtransport-cargo-git-cache:
+  rustlemania-actix-webtransport-cargo-target-cache:
+  rustlemania-actix-webtransport-cache:
+  rustlemania-yew-ui-cargo-registry-cache:
+  rustlemania-yew-ui-cargo-git-cache:
+  rustlemania-yew-ui-cargo-target-cache:
+  rustlemania-yew-ui-cache:
+  rustlemania-leptos-ui-cargo-registry-cache:
+  rustlemania-leptos-ui-cargo-git-cache:
+  rustlemania-leptos-ui-cargo-target-cache:
+  rustlemania-leptos-ui-cache:
+  rustlemania-bot-cargo-registry-cache:
+  rustlemania-bot-cargo-git-cache:
+  rustlemania-bot-cargo-target-cache:
+  rustlemania-bot-cache:
+  prometheus_data:
+  grafana_data:
